@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: 0BSD
+
+binds=(--bind "$(dirname -- "${BASH_SOURCE[0]}")/../nix" /nix)
+for path in /*
+do
+  binds+=(--dev-bind "$path" "$path")
+done
+exec bwrap --setenv NOTIFY_SOCKET "$NOTIFY_SOCKET" "${binds[@]}" bash -c 'systemd-notify --ready --pid && exec sleep infinity'

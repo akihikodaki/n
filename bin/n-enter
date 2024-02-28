@@ -5,5 +5,11 @@ set -e
 d="$(dirname -- "${BASH_SOURCE[0]}")/n-d"
 systemd-run --user -G -u n-d -p NotifyAccess=all --service-type=notify "$d" || true
 t="$(systemctl --user show -p MainPID --value n-d.service)"
+if (("$#"))
+then
+  argv=("$@")
+else
+  argv=(bash -l)
+fi
 export BASH_ENV=/nix/var/nix/profiles/default/etc/profile.d/nix.sh
-exec nsenter -U -m --preserve-credentials -t "$t" bash -c 'cd "$0" && exec "$@"' "$PWD" "${@:-bash}"
+exec nsenter -U -m --preserve-credentials -t "$t" bash -c 'cd "$0" && exec "$@"' "$PWD" "${argv[@]}"

@@ -10,7 +10,7 @@ if not os.path.isdir("/nix"):
   enter = pathlib.Path(__file__).parent / "n-enter"
   os.execl(enter, enter, *sys.argv)
 
-argv = sys.argv[1:] or ["bash", "-l"]
+argv = sys.argv[1:] or ["bash"]
 cwd = os.getcwd()
 
 proc_fd = os.open("/proc", os.O_DIRECTORY)

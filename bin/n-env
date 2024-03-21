@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: 0BSD
+
+import os
+import pathlib
+import sys
+
+fd = os.memfd_create("n", flags=0)
+os.write(fd, pathlib.Path("/proc/self/environ").read_bytes())
+os.execvp(sys.argv[1], sys.argv[1:])

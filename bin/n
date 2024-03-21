@@ -6,8 +6,10 @@ import os
 import pathlib
 import sys
 
+parent = pathlib.Path(__file__).parent
+
 if not os.path.isdir("/nix"):
-  enter = pathlib.Path(__file__).parent / "n-enter"
+  enter = parent / "n-enter"
   os.execl(enter, enter, *sys.argv)
 
 argv = sys.argv[1:] or ["bash"]
@@ -16,28 +18,40 @@ cwd = os.getcwd()
 proc_fd = os.open("/proc", os.O_DIRECTORY)
 try:
   for proc_entry in os.scandir(proc_fd):
-    environ_path = os.path.join(proc_entry.name, "environ")
+    fd_path = os.path.join(proc_entry.name, "fd")
 
     try:
-      environ_fd = os.open(environ_path, os.O_RDONLY, dir_fd=proc_fd)
+      fd_fd = os.open(fd_path, os.O_DIRECTORY, dir_fd=proc_fd)
     except OSError:
       continue
+    try:
+      for fd_entry in os.scandir(fd_fd):
+        try:
+          link = os.readlink(fd_entry.name, dir_fd=fd_fd)
+        except PermissionError:
+          continue
 
-    with open(environ_fd) as environ_file:
-      environ_str = environ_file.read()
+        if link != '/memfd:n (deleted)':
+          continue
 
-    environ = {}
-    for entry in environ_str.split("\0"):
-      if not entry:
-        continue
+        environ_fd = os.open(fd_entry.name, os.O_RDONLY, dir_fd=fd_fd)
 
-      key, value = entry.split("=", maxsplit=1)
-      environ[key] = value
+        with open(environ_fd) as environ_file:
+          environ_str = environ_file.read()
 
-    if environ.get("N") == cwd:
-      os.execvpe(argv[0], argv, environ)
+        environ = {}
+        for entry in environ_str.split("\0"):
+          if not entry:
+            continue
+
+          key, value = entry.split("=", maxsplit=1)
+          environ[key] = value
+
+        os.execvpe(argv[0], argv, environ)
+    finally:
+      os.close(fd_fd)
 finally:
   os.close(proc_fd)
 
 os.execlp("nix-shell", "nix-shell", "--pure", "--run",
-           f'N="$PWD" exec {shlex.join(argv)}')
+           f'exec {shlex.join([str(parent / "n-env"), *argv])}')

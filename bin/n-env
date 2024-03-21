@@ -4,7 +4,11 @@
 import os
 import pathlib
 import sys
+import tempfile
 
-fd = os.memfd_create("n", flags=0)
+fd = os.open(tempfile.gettempdir(), flags=os.O_TMPFILE | os.O_RDWR)
+os.set_inheritable(fd, True)
 os.write(fd, pathlib.Path("/proc/self/environ").read_bytes())
+os.environ["NFD"] = str(fd)
+os.environ["NWD"] = os.getcwd()
 os.execvp(sys.argv[1], sys.argv[1:])

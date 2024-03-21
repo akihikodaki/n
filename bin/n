@@ -6,6 +6,17 @@ import os
 import pathlib
 import sys
 
+def read(file):
+  environ = {}
+  for entry in file.read().split("\0"):
+    if not entry:
+      continue
+
+    key, value = entry.split("=", maxsplit=1)
+    environ[key] = value
+
+  return environ
+
 parent = pathlib.Path(__file__).parent
 
 if not os.path.isdir("/nix"):
@@ -18,38 +29,27 @@ cwd = os.getcwd()
 proc_fd = os.open("/proc", os.O_DIRECTORY)
 try:
   for proc_entry in os.scandir(proc_fd):
-    fd_path = os.path.join(proc_entry.name, "fd")
-
+    path = os.path.join(proc_entry.name, "environ")
     try:
-      fd_fd = os.open(fd_path, os.O_DIRECTORY, dir_fd=proc_fd)
+      fd = os.open(path, os.O_RDONLY, dir_fd=proc_fd)
     except OSError:
       continue
-    try:
-      for fd_entry in os.scandir(fd_fd):
-        try:
-          link = os.readlink(fd_entry.name, dir_fd=fd_fd)
-        except PermissionError:
-          continue
 
-        if link != '/memfd:n (deleted)':
-          continue
+    with open(fd) as file:
+      environ = read(file)
 
-        environ_fd = os.open(fd_entry.name, os.O_RDONLY, dir_fd=fd_fd)
+    if environ.get("NWD") != cwd:
+      continue
 
-        with open(environ_fd) as environ_file:
-          environ_str = environ_file.read()
+    path = os.path.join(proc_entry.name, "fd", environ["NFD"])
+    fd = os.open(path, os.O_RDONLY, dir_fd=proc_fd)
 
-        environ = {}
-        for entry in environ_str.split("\0"):
-          if not entry:
-            continue
-
-          key, value = entry.split("=", maxsplit=1)
-          environ[key] = value
-
-        os.execvpe(argv[0], argv, environ)
-    finally:
-      os.close(fd_fd)
+    with open(fd) as file:
+      os.set_inheritable(fd, True)
+      environ = read(file)
+      environ["NFD"] = str(fd)
+      environ["NWD"] = cwd
+      os.execvpe(argv[0], argv, environ)
 finally:
   os.close(proc_fd)
 

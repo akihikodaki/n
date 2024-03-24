@@ -2,17 +2,21 @@
 # SPDX-License-Identifier: 0BSD
 
 import shlex
+import shutil
 import os
 import pathlib
 import sys
 
-def read(file):
+def consume(fd):
+  with open(fd, "rb") as file:
+    environ_str = file.read()
+
   environ = {}
-  for entry in file.read().split("\0"):
+  for entry in environ_str.split(b"\0"):
     if not entry:
       continue
 
-    key, value = entry.split("=", maxsplit=1)
+    key, value = entry.split(b"=", maxsplit=1)
     environ[key] = value
 
   return environ
@@ -24,34 +28,50 @@ if not os.path.isdir("/nix"):
   os.execl(enter, enter, *sys.argv)
 
 argv = sys.argv[1:] or ["bash"]
-cwd = os.getcwd()
+cwd = os.getcwdb()
 
-proc_fd = os.open("/proc", os.O_DIRECTORY)
+path = os.path.join(os.environb[b"XDG_RUNTIME_DIR"], b"n")
 try:
-  for proc_entry in os.scandir(proc_fd):
-    path = os.path.join(proc_entry.name, "environ")
+  fd = os.open(path, os.O_DIRECTORY)
+except FileNotFoundError:
+  fd = None
+
+if fd:
+  try:
+    referenceds = []
+    unreferenceds = [entry.name.encode() for entry in os.scandir(fd)]
+    proc_fd = os.open(b"/proc", os.O_DIRECTORY)
     try:
-      fd = os.open(path, os.O_RDONLY, dir_fd=proc_fd)
-    except OSError:
-      continue
+      for entry in os.scandir(proc_fd):
+        environ_path = os.path.join(entry.name.encode(), b"environ")
+        try:
+          environ_fd = os.open(environ_path, os.O_RDONLY, dir_fd=proc_fd)
+        except OSError:
+          continue
 
-    with open(fd) as file:
-      environ = read(file)
+        name = consume(environ_fd).get(b"N")
+        try:
+          unreferenceds.remove(name)
+        except ValueError:
+          continue
 
-    if environ.get("NWD") != cwd:
-      continue
+        referenceds.append(name)
+    finally:
+      os.close(proc_fd)
 
-    path = os.path.join(proc_entry.name, "fd", environ["NFD"])
-    fd = os.open(path, os.O_RDONLY, dir_fd=proc_fd)
+    for name in unreferenceds:
+      shutil.rmtree(name, dir_fd=fd)
 
-    with open(fd) as file:
-      os.set_inheritable(fd, True)
-      environ = read(file)
-      environ["NFD"] = str(fd)
-      environ["NWD"] = cwd
+    for name in referenceds:
+      if cwd != os.readlink(os.path.join(name, b"wd"), dir_fd=fd):
+        continue
+
+      environ_path = os.path.join(name, b"environ")
+      environ = consume(os.open(environ_path, os.O_RDONLY, dir_fd=fd))
+      environ[b"N"] = cwd
       os.execvpe(argv[0], argv, environ)
-finally:
-  os.close(proc_fd)
+  finally:
+    os.close(fd)
 
-os.execlp("nix-shell", "nix-shell", "--pure", "--run",
+os.execlp(b"nix-shell", b"nix-shell", b"--pure", b"--run",
            f'exec {shlex.join([str(parent / "n-env"), *argv])}')

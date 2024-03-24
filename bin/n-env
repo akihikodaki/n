@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: 0BSD
 
 import os
-import pathlib
+import shutil
 import sys
-import tempfile
 
-fd = os.open(tempfile.gettempdir(), flags=os.O_TMPFILE | os.O_RDWR)
-os.set_inheritable(fd, True)
-os.write(fd, pathlib.Path("/proc/self/environ").read_bytes())
-os.environ["NFD"] = str(fd)
-os.environ["NWD"] = os.getcwd()
+pid = str(os.getpid()).encode()
+path = os.path.join(os.environb[b"XDG_RUNTIME_DIR"], b"n", pid)
+os.makedirs(path)
+os.environb[b"N"] = pid
+os.symlink(os.getcwdb(), os.path.join(path, b"wd"))
+shutil.copyfile(b"/proc/self/environ", os.path.join(path, b"environ"))
 os.execvp(sys.argv[1], sys.argv[1:])

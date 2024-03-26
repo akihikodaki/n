@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: 0BSD
 
 import shlex
-import shutil
+import hashlib
 import os
 import pathlib
 import sys
@@ -38,7 +38,6 @@ except FileNotFoundError:
 
 if fd:
   try:
-    referenceds = []
     unreferenceds = [entry.name.encode() for entry in os.scandir(fd)]
     proc_fd = os.open(b"/proc", os.O_DIRECTORY)
     try:
@@ -53,22 +52,22 @@ if fd:
         try:
           unreferenceds.remove(name)
         except ValueError:
-          continue
-
-        referenceds.append(name)
+          pass
     finally:
       os.close(proc_fd)
 
     for name in unreferenceds:
-      shutil.rmtree(name, dir_fd=fd)
+      os.remove(name, dir_fd=fd)
 
-    for name in referenceds:
-      if cwd != os.readlink(os.path.join(name, b"wd"), dir_fd=fd):
-        continue
+    sha1 = hashlib.sha1(cwd).hexdigest().encode()
+    try:
+      environ_fd = os.open(sha1, os.O_RDONLY, dir_fd=fd)
+    except FileNotFoundError:
+      environ_fd = None
 
-      environ_path = os.path.join(name, b"environ")
-      environ = consume(os.open(environ_path, os.O_RDONLY, dir_fd=fd))
-      environ[b"N"] = cwd
+    if environ_fd:
+      environ = consume(environ_fd)
+      environ[b"N"] = sha1
       os.execvpe(argv[0], argv, environ)
   finally:
     os.close(fd)
